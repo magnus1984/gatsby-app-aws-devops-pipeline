@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CD pipeline for a static gatsby website
+
+Parameters:
+    InfrastructureTemplate:
+        Type: String
+        Description: path, relative to the root of the project, where the infrastructure cloudformation template can be found (e.g: src/webformation/webformation-template.yaml)
+    
+    ProjectName:
+        Type: String
+        Description: A name for your project
+
+    DeployEnv:
+        Type: String
+        Description: an identifier for your deployment environment. Only commits to branch name that are == to this parameters will be deployed.
+
+    GithubCloneUrl:
+        Type: String
+        Description: url of the source repo for the project
+
+
+Resources:
+    CodeBuildIAMRole:
+        Type: 'AWS::IAM::Role'
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                    - Effect: "Allow"
+                      Principal:
+                          Service:
+                              - "codebuild.amazonaws.com"
+                      Action: "sts:AssumeRole"
+            Policies:
+                - PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: 'Allow'
+                            Resource:
+                                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${ProjectName}
+                                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${ProjectName}:*
+                            Action:
+                                - logs:CreateLogGroup
+                                - logs:CreateLogStream
+                                - logs:PutLogEvents
+                          - Effect: 'Allow'
+                            Resource:
+                                - arn:aws:s3:::*
+                            Action:
+                                - s3:PutObject
+                                - s3:GetObject
+                                - s3:GetObjectVersion
+
+    BuildServer:
+        Type: 'AWS::CodeBuild::Project'
+        Properties: 
+            Artifacts: 
+                Type: 'NO_ARTIFACTS'
+            Environment:
+                ComputeType: 'BUILD_GENERAL1_SMALL'
+                EnvironmentVariables:
+
+                    - Name: INFRASTRUCTURE_TEMPLATE
+                      Type: PLAINTEXT
+                      Value: !Ref InfrastructureTemplate
+
+                    - Name: PROJECT_NAME
+                      Type: PLAINTEXT
+                      Value: !Ref ProjectName
+
+                    - Name: DEPLOY_ENVIRONMENT
+                      Type: PLAINTEXT
+                      Value: !Ref DeployEnv
+
+                Image: 'aws/codebuild/python:3.6.5'
+                Type: 'LINUX_CONTAINER'
+            Name: !Sub ${ProjectName}-${DeployEnv}-cd-pipeline
+            ServiceRole: !Ref CodeBuildIAMRole
+            Source:
+                Auth:
+                    Type: OAUTH
+                GitCloneDepth: 1
+                Location: !Ref GithubCloneUrl
+                ReportBuildStatus: true
+                Type: GITHUB
+            Triggers:
+                Webhook: true
+
