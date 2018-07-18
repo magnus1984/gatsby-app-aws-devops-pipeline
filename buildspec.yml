@@ -1,0 +1,19 @@
+version: 0.2
+
+phases:
+    install:
+        commands:
+            - npm install
+
+    pre_build:
+        commands:
+            - aws cloudformation deploy --template-file $INFRASTRUCTURE_TEMPLATE --stack-name ${PROJECT_NAME}-${DEPLOY_ENVIRONMENT}
+
+    build:
+        commands:
+            - npm run build
+
+    post_build:
+        commands:
+            - BUCKET=`aws cloudformation describe-stacks --stack-name ${PROJECT_NAME}-${DEPLOY_ENVIRONMENT} --query 'Stacks[0].Outputs[0].OutputValue' | sed -e 's/\"//g'`
+            - aws sync public $BUCKET
